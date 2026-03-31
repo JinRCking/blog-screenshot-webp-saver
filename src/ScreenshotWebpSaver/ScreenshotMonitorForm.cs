@@ -7,8 +7,9 @@ namespace ScreenshotWebpSaver;
 
 public sealed class ScreenshotMonitorForm : Form
 {
-    private const string OutputFolder = @"D:\1A-blog-webp-jietu\April";
-    private const string ThonnyPythonPath = @"C:\Users\JinRC\AppData\Local\Programs\Thonny\python.exe";
+    private static readonly string DefaultOutputFolder =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "ScreenshotWebpSaver");
+
     private const string HelperScriptName = "convert_to_webp.py";
 
     private readonly NotifyIcon _trayIcon;
@@ -17,6 +18,7 @@ public sealed class ScreenshotMonitorForm : Form
     private readonly ToolStripMenuItem _exitItem;
     private readonly string _tempFolder;
     private readonly string _logPath;
+    private readonly string _outputFolder;
 
     private bool _clipboardListenerRegistered;
     private bool _isProcessing;
@@ -33,16 +35,17 @@ public sealed class ScreenshotMonitorForm : Form
 
         _tempFolder = Path.Combine(Path.GetTempPath(), "ScreenshotWebpSaver");
         _logPath = Path.Combine(AppContext.BaseDirectory, "ScreenshotWebpSaver.log");
+        _outputFolder = ResolveOutputFolder();
 
         Directory.CreateDirectory(_tempFolder);
-        Directory.CreateDirectory(OutputFolder);
+        Directory.CreateDirectory(_outputFolder);
 
-        _statusItem = new ToolStripMenuItem("等待截图...", null, (_, _) => { })
+        _statusItem = new ToolStripMenuItem("Waiting for screenshots...", null, (_, _) => { })
         {
             Enabled = false
         };
-        _openOutputItem = new ToolStripMenuItem("打开输出文件夹", null, (_, _) => OpenOutputFolder());
-        _exitItem = new ToolStripMenuItem("退出", null, (_, _) => ExitApplication());
+        _openOutputItem = new ToolStripMenuItem("Open output folder", null, (_, _) => OpenOutputFolder());
+        _exitItem = new ToolStripMenuItem("Exit", null, (_, _) => ExitApplication());
 
         var menu = new ContextMenuStrip();
         menu.Items.AddRange([_statusItem, _openOutputItem, new ToolStripSeparator(), _exitItem]);
@@ -63,8 +66,8 @@ public sealed class ScreenshotMonitorForm : Form
     {
         base.OnLoad(e);
         Hide();
-        UpdateStatus("正在后台监听 Win+Shift+S 截图");
-        ShowBalloon("截图转 WebP 已启动", $"新的截图会自动保存到 {OutputFolder}");
+        UpdateStatus("Listening for clipboard screenshots");
+        ShowBalloon("Screenshot WebP Saver is running", $"New screenshots will be saved to {_outputFolder}");
         VerifyDependencies();
     }
 
@@ -144,28 +147,28 @@ public sealed class ScreenshotMonitorForm : Form
 
             var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss_fff");
             var tempInputPath = Path.Combine(_tempFolder, $"clip_{stamp}.png");
-            var finalOutputPath = Path.Combine(OutputFolder, $"clip_{stamp}.webp");
+            var finalOutputPath = Path.Combine(_outputFolder, $"clip_{stamp}.webp");
 
             await File.WriteAllBytesAsync(tempInputPath, pngBytes);
-            UpdateStatus($"正在转换 {Path.GetFileName(finalOutputPath)}");
+            UpdateStatus($"Converting {Path.GetFileName(finalOutputPath)}");
 
             var result = await RunPythonConversionAsync(tempInputPath, finalOutputPath);
             if (!result.Success)
             {
-                UpdateStatus("转换失败，见日志");
-                ShowBalloon("截图转 WebP 失败", result.Message);
+                UpdateStatus("Conversion failed. See log.");
+                ShowBalloon("Screenshot WebP conversion failed", result.Message);
                 Log(result.Message);
                 return;
             }
 
             TryDeleteFile(tempInputPath);
-            UpdateStatus($"已保存 {Path.GetFileName(finalOutputPath)}");
+            UpdateStatus($"Saved {Path.GetFileName(finalOutputPath)}");
             Log($"Saved: {finalOutputPath}");
         }
         catch (Exception ex)
         {
-            UpdateStatus("发生异常，见日志");
-            ShowBalloon("截图转 WebP 出错", ex.Message);
+            UpdateStatus("Unexpected error. See log.");
+            ShowBalloon("Screenshot WebP conversion error", ex.Message);
             Log(ex.ToString());
         }
         finally
@@ -177,24 +180,32 @@ public sealed class ScreenshotMonitorForm : Form
     private async Task<(bool Success, string Message)> RunPythonConversionAsync(string inputPath, string outputPath)
     {
         var helperScriptPath = Path.Combine(AppContext.BaseDirectory, HelperScriptName);
-        if (!File.Exists(ThonnyPythonPath))
+        var pythonCommand = ResolvePythonCommand();
+
+        if (pythonCommand is null)
         {
-            return (false, $"找不到 Thonny Python：{ThonnyPythonPath}");
+            return (false, "Python was not found. Configure SCREENSHOT_WEBP_PYTHON or install Python.");
         }
 
         if (!File.Exists(helperScriptPath))
         {
-            return (false, $"找不到转换脚本：{helperScriptPath}");
+            return (false, $"Conversion script not found: {helperScriptPath}");
         }
 
         var startInfo = new ProcessStartInfo
         {
-            FileName = ThonnyPythonPath,
+            FileName = pythonCommand,
             RedirectStandardError = true,
             RedirectStandardOutput = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+
+        if (string.Equals(pythonCommand, "py", StringComparison.OrdinalIgnoreCase))
+        {
+            startInfo.ArgumentList.Add("-3");
+        }
+
         startInfo.ArgumentList.Add(helperScriptPath);
         startInfo.ArgumentList.Add(inputPath);
         startInfo.ArgumentList.Add(outputPath);
@@ -238,27 +249,28 @@ public sealed class ScreenshotMonitorForm : Form
     private void VerifyDependencies()
     {
         var helperScriptPath = Path.Combine(AppContext.BaseDirectory, HelperScriptName);
+        var pythonCommand = ResolvePythonCommand();
 
-        if (!File.Exists(ThonnyPythonPath))
+        if (pythonCommand is null)
         {
-            ShowBalloon("缺少 Python", $"没有找到 {ThonnyPythonPath}");
-            UpdateStatus("缺少 Thonny Python");
+            ShowBalloon("Missing Python", "Python was not found. Set SCREENSHOT_WEBP_PYTHON or install Python.");
+            UpdateStatus("Python not found");
             return;
         }
 
         if (!File.Exists(helperScriptPath))
         {
-            ShowBalloon("缺少脚本", $"没有找到 {helperScriptPath}");
-            UpdateStatus("缺少转换脚本");
+            ShowBalloon("Missing script", $"Could not find {helperScriptPath}");
+            UpdateStatus("Conversion script missing");
         }
     }
 
     private void OpenOutputFolder()
     {
-        Directory.CreateDirectory(OutputFolder);
+        Directory.CreateDirectory(_outputFolder);
         Process.Start(new ProcessStartInfo
         {
-            FileName = OutputFolder,
+            FileName = _outputFolder,
             UseShellExecute = true
         });
     }
@@ -307,6 +319,87 @@ public sealed class ScreenshotMonitorForm : Form
         catch
         {
             // Ignore log failures.
+        }
+    }
+
+    private static string ResolveOutputFolder()
+    {
+        var configured = Environment.GetEnvironmentVariable("SCREENSHOT_WEBP_OUTPUT_DIR");
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            return configured;
+        }
+
+        return DefaultOutputFolder;
+    }
+
+    private static string? ResolvePythonCommand()
+    {
+        var configured = Environment.GetEnvironmentVariable("SCREENSHOT_WEBP_PYTHON");
+        if (!string.IsNullOrWhiteSpace(configured) && (File.Exists(configured) || IsCommandAvailable(configured)))
+        {
+            return configured;
+        }
+
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+
+        string[] candidatePaths =
+        [
+            Path.Combine(localAppData, "Programs", "Thonny", "python.exe"),
+            Path.Combine(localAppData, "Programs", "Python", "Python313", "python.exe"),
+            Path.Combine(localAppData, "Programs", "Python", "Python312", "python.exe"),
+            Path.Combine(localAppData, "Programs", "Python", "Python311", "python.exe"),
+            Path.Combine(localAppData, "Programs", "Python", "Python310", "python.exe"),
+            Path.Combine(programFiles, "Python313", "python.exe"),
+            Path.Combine(programFiles, "Python312", "python.exe"),
+            Path.Combine(programFiles, "Python311", "python.exe"),
+            Path.Combine(programFiles, "Python310", "python.exe")
+        ];
+
+        var filePath = candidatePaths.FirstOrDefault(File.Exists);
+        if (!string.IsNullOrWhiteSpace(filePath))
+        {
+            return filePath;
+        }
+
+        if (IsCommandAvailable("py"))
+        {
+            return "py";
+        }
+
+        if (IsCommandAvailable("python"))
+        {
+            return "python";
+        }
+
+        return null;
+    }
+
+    private static bool IsCommandAvailable(string command)
+    {
+        try
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "where",
+                    Arguments = command,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+
+            process.Start();
+            process.WaitForExit(2000);
+            return process.ExitCode == 0;
+        }
+        catch
+        {
+            return false;
         }
     }
 

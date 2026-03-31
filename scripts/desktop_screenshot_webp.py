@@ -3,7 +3,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-default_output_folder = Path(r"D:\1A-blog-webp-jietu\April")
+default_output_folder = Path.home() / "Pictures" / "ScreenshotWebpSaver"
 max_size_kb = 50
 start_quality = 80
 min_quality = 30
@@ -24,28 +24,28 @@ def save_webp_with_limit(image: Image.Image, path: Path) -> None:
         size_kb = path.stat().st_size / 1024
 
         if size_kb <= max_size_kb:
-            print(f"达到目标: {size_kb:.1f} KB (quality={quality})")
+            print(f"Reached target: {size_kb:.1f} KB (quality={quality})")
             break
 
         quality -= quality_step
 
         if quality < min_quality:
-            print(f"已到最低质量 {min_quality}，当前大小: {size_kb:.1f} KB")
+            print(f"Reached minimum quality {min_quality}. Current size: {size_kb:.1f} KB")
             break
 
-        print(f"超过目标 {size_kb:.1f} KB，降低质量到 {quality} 后重新压缩...")
+        print(f"Still above target at {size_kb:.1f} KB. Retrying with quality={quality}...")
 
 
 def main() -> int:
     if len(sys.argv) < 2:
-        print("用法: python desktop_screenshot_webp.py <输入图片路径> [输出目录]")
+        print("Usage: python desktop_screenshot_webp.py <input-image> [output-dir]")
         return 1
 
     input_path = Path(sys.argv[1])
     output_folder = Path(sys.argv[2]) if len(sys.argv) >= 3 else default_output_folder
 
     if not input_path.exists():
-        print(f"找不到输入文件: {input_path}")
+        print(f"Input file not found: {input_path}")
         return 2
 
     output_folder.mkdir(parents=True, exist_ok=True)
@@ -56,7 +56,7 @@ def main() -> int:
         img = img.convert("RGB")
         save_webp_with_limit(img, output_path)
 
-    print(f"最终文件: {output_path}")
+    print(f"Output file: {output_path}")
     return 0
 
 

@@ -1,75 +1,90 @@
 # Blog Screenshot WebP Saver
 
-`Blog Screenshot WebP Saver` 是一个面向博客作者的 Windows 小工具。
+Blog Screenshot WebP Saver is a public Windows utility for bloggers, technical writers, and anyone who frequently inserts screenshots into articles.
 
-很多人在写博客时，会直接用 `Win + Shift + S` 截图，然后把图片插入文章。但 Windows 自带截图通常会以体积偏大的图片格式进入剪贴板，后续如果直接保存为 `.jpg` 或直接上传原图，常常会带来两个问题：
+When people use `Win + Shift + S`, the screenshot goes to the clipboard first. In many writing workflows, that image is later saved and uploaded with a larger-than-needed file size. Large screenshots slow down blog pages, consume more bandwidth, and waste storage.
 
-- 图片体积大，博客页面加载慢
-- 服务器存储占用高，长期积累更浪费
+This project solves that by running as a small tray app in the background. Whenever a new screenshot image appears in the clipboard, it converts the image to `.webp` automatically and saves it to a local output folder.
 
-这个工具启动后会在后台常驻监听剪贴板中的截图内容。当你使用 `Win + Shift + S` 截图后，它会自动把截图转换为 `.webp` 文件，并保存到默认目录：
+Typical benefits:
 
-`D:\1A-blog-webp-jietu\April`
+- Faster page loads for image-heavy articles
+- Smaller uploads for blog CMS workflows
+- Lower storage usage on servers and CDNs
+- Less manual work during writing
 
-对博客写作者来说，这样可以把“截图 -> 压缩 -> 转格式 -> 保存”变成一步完成。以常见的全屏截图为例，原始图片可能在 `3MB ~ 5MB` 左右，转成 `.webp` 后通常可以维持在 `100KB ~ 200KB` 左右，更利于网站访问速度和服务器空间控制。
+## What It Does
 
-## 功能特点
+- Runs in the Windows system tray
+- Listens for clipboard image updates triggered by tools like `Win + Shift + S`
+- Saves screenshots as `.webp`
+- Includes a helper Python script for standalone image conversion
+- Includes a second Python script with a size-target compression loop
 
-- 启动后托盘常驻，不影响正常使用
-- 监听 `Win + Shift + S` 产生的截图剪贴板图片
-- 自动转换为 `.webp`
-- 默认保存到 `D:\1A-blog-webp-jietu\April`
-- 附带桌面版 Python 压缩脚本，方便单独处理某张图片
-- 双击即可运行，无需手动每次改路径
+## Default Output Folder
 
-## 软件逻辑
+By default, the app saves converted images to:
 
-主程序是一个基于 WinForms 的后台监听工具，核心流程如下：
+`%USERPROFILE%\Pictures\ScreenshotWebpSaver`
 
-1. 启动后注册剪贴板监听
-2. 检测到新的截图图片后，从剪贴板读取图像
-3. 先把图片临时保存为 PNG
-4. 调用 Thonny 自带 Python 环境中的 Pillow
-5. 运行 `convert_to_webp.py` 把临时图片转换为 `.webp`
-6. 保存到 `D:\1A-blog-webp-jietu\April`
+You can override this by setting the environment variable:
 
-程序还做了简单的重复截图去重，避免同一张图在极短时间内被重复处理。
+`SCREENSHOT_WEBP_OUTPUT_DIR`
 
-## Python 脚本说明
+## How The App Works
 
-仓库里包含两个 Python 脚本：
+The desktop app uses this workflow:
 
-- `convert_to_webp.py`
-  说明：这是桌面程序内部调用的转换脚本。它接收“输入图片路径”和“输出图片路径”，直接生成 `.webp` 文件。
+1. Register a clipboard listener
+2. Detect when a new image is placed in the clipboard
+3. Export the clipboard image to a temporary PNG
+4. Call a Python conversion script
+5. Save the final `.webp` image into the output folder
+
+The app also hashes recent clipboard images to avoid processing the same screenshot repeatedly within a short time window.
+
+## Python Runtime
+
+The project uses Python + Pillow for WebP conversion.
+
+At runtime, the app searches for Python in this order:
+
+1. `SCREENSHOT_WEBP_PYTHON`
+2. `py`
+3. `python`
+4. common local installation paths, including Thonny and standard Python installs
+
+This means the repository no longer depends on any single hard-coded username or machine-specific path.
+
+## Included Python Scripts
+
+The repository includes two Python scripts:
+
+- `src/ScreenshotWebpSaver/convert_to_webp.py`
+  Purpose: the desktop app calls this script internally. It accepts an input image path and an output image path, then writes a `.webp` file.
 
 - `scripts/desktop_screenshot_webp.py`
-  说明：这是根据你桌面上的 `压缩webp.py` 思路整理出来的脚本版本，保留了“超过目标大小就逐步降低质量”的压缩逻辑，默认输出目录是 `D:\1A-blog-webp-jietu\April`。
+  Purpose: a standalone helper script for manually converting an image. It keeps a simple quality-reduction loop and tries to compress toward a target file size.
 
-如果你电脑桌面上已经有：
+## Compression Logic
 
-`C:\Users\JinRC\Desktop\截图压缩webp.py`
+The standalone helper script uses:
 
-那它就是这个逻辑的桌面可用版本。
+- target size: `50 KB`
+- starting quality: `80`
+- minimum quality: `30`
+- step size: `5`
 
-## 压缩逻辑
+Flow:
 
-桌面版 Python 脚本使用以下逻辑进行压缩：
+1. Save as `.webp` with the current quality
+2. Check the file size
+3. If it is still too large, lower the quality
+4. Repeat until the target is met or the minimum quality is reached
 
-- 目标大小：`50KB`
-- 初始质量：`80`
-- 最低质量：`30`
-- 每次递减：`5`
+This is useful for blog screenshots where a small file size matters more than preserving every pixel perfectly.
 
-处理流程：
-
-1. 先按当前质量保存为 `.webp`
-2. 检查文件大小是否小于等于目标大小
-3. 如果仍然过大，就把质量继续降低
-4. 一直到达到目标，或者降到最低质量为止
-
-这套逻辑适合博客配图场景，能够在清晰度和体积之间做一个比较实用的平衡。
-
-## 目录结构
+## Project Structure
 
 ```text
 blog-screenshot-webp-saver/
@@ -86,6 +101,7 @@ blog-screenshot-webp-saver/
 ├─ scripts/
 │  └─ desktop_screenshot_webp.py
 └─ release/
+   ├─ ScreenshotWebpSaver-win10-x64.zip
    └─ win10-x64/
       ├─ ScreenshotWebpSaver.exe
       ├─ ScreenshotWebpSaver.dll
@@ -95,60 +111,60 @@ blog-screenshot-webp-saver/
       └─ start_screenshot_webp_saver.cmd
 ```
 
-## 使用方法
+## Usage
 
-### 方式一：直接运行 exe
+### Run the Tray App
 
-进入：
+Open:
 
 `release/win10-x64/`
 
-双击：
+Then run either:
 
 - `ScreenshotWebpSaver.exe`
-  或
 - `start_screenshot_webp_saver.cmd`
 
-启动后软件会在后台托盘运行。
-
-然后直接按：
+After that, use:
 
 `Win + Shift + S`
 
-截图完成后，生成的 `.webp` 文件会自动保存到：
+Each new clipboard screenshot will be converted to `.webp` and saved into the output folder.
 
-`D:\1A-blog-webp-jietu\April`
+### Run the Standalone Python Script
 
-### 方式二：手动用 Python 脚本处理单张图片
+Example:
 
 ```powershell
-& "C:\Users\JinRC\AppData\Local\Programs\Thonny\python.exe" ".\scripts\desktop_screenshot_webp.py" "C:\path\to\your-image.jpg"
+python .\scripts\desktop_screenshot_webp.py "C:\path\to\image.jpg"
 ```
 
-如果不传输出目录，脚本默认保存到：
+Optional custom output directory:
 
-`D:\1A-blog-webp-jietu\April`
+```powershell
+python .\scripts\desktop_screenshot_webp.py "C:\path\to\image.jpg" "C:\path\to\output"
+```
 
-## 运行环境
+## Requirements
 
-- Windows 10
+- Windows 10 or newer
 - .NET Desktop Runtime 9
-- Thonny 自带 Python
+- Python
 - Pillow
 
-当前程序默认调用：
+Install Pillow with:
 
-`C:\Users\JinRC\AppData\Local\Programs\Thonny\python.exe`
+```powershell
+pip install pillow
+```
 
-如果未来更换了 Python 安装路径，可以在 `ScreenshotMonitorForm.cs` 中修改对应常量。
+## Who This Is For
 
-## 适用场景
+- bloggers
+- technical writers
+- documentation authors
+- developers writing tutorials
+- anyone who wants smaller screenshot files automatically
 
-- 写博客时需要频繁截图
-- 想直接使用 `.webp` 插图
-- 希望减小网页图片体积
-- 希望节约服务器空间与带宽
+## Notes
 
-## 说明
-
-这个项目偏向个人博客写作效率工具，默认路径已经按照当前使用场景配置好。如果你有自己的截图目录、月份目录或者博客资源目录，可以自行改源码中的保存路径常量。
+The repository is intentionally machine-agnostic. If you want a different output folder, Python executable, or compression behavior, update the environment variables or adjust the source code to fit your workflow.
