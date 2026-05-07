@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Drawing.Imaging;
 using System.Security.Cryptography;
 using System.Text;
+using System.Collections.Specialized;
 
 namespace ScreenshotWebpSaver;
 
@@ -162,6 +163,7 @@ public sealed class ScreenshotMonitorForm : Form
             }
 
             TryDeleteFile(tempInputPath);
+            ReplaceClipboardWithWebpFile(finalOutputPath);
             UpdateStatus($"Saved {Path.GetFileName(finalOutputPath)}");
             Log($"Saved: {finalOutputPath}");
         }
@@ -273,6 +275,19 @@ public sealed class ScreenshotMonitorForm : Form
             FileName = _outputFolder,
             UseShellExecute = true
         });
+    }
+
+    private void ReplaceClipboardWithWebpFile(string webpPath)
+    {
+        var files = new StringCollection();
+        files.Add(webpPath);
+
+        var dataObject = new DataObject();
+        dataObject.SetFileDropList(files);
+        dataObject.SetData("image/webp", true, File.ReadAllBytes(webpPath));
+
+        Clipboard.SetDataObject(dataObject, true, 5, 100);
+        Log($"Clipboard replaced with WebP file: {webpPath}");
     }
 
     private void ExitApplication()

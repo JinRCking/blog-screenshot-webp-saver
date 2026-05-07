@@ -18,6 +18,7 @@ Typical benefits:
 - Runs in the Windows system tray
 - Listens for clipboard image updates triggered by tools like `Win + Shift + S`
 - Saves screenshots as `.webp`
+- Replaces the clipboard with the generated `.webp` file reference for apps that support file or WebP clipboard paste
 - Includes a helper Python script for standalone image conversion
 - Includes a second Python script with a size-target compression loop
 
@@ -40,8 +41,11 @@ The desktop app uses this workflow:
 3. Export the clipboard image to a temporary PNG
 4. Call a Python conversion script
 5. Save the final `.webp` image into the output folder
+6. Replace the clipboard with a file-drop reference to the generated `.webp`
 
 The app also hashes recent clipboard images to avoid processing the same screenshot repeatedly within a short time window.
+
+Clipboard paste support depends on the receiving app. Apps that accept file paste or `image/webp` clipboard data can paste the generated `.webp`; apps that only accept bitmap clipboard data may not treat it as a WebP file.
 
 ## Python Runtime
 
